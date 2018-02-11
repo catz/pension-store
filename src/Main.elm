@@ -2,13 +2,14 @@ module Main exposing (..)
 
 import Html exposing (..)
 import ToFixed exposing (..)
-import Html exposing (i, span, div)
+import Html exposing (i, span, div, button)
 import Html.Attributes exposing (class, classList, colspan)
 import Bootstrap.CDN as CDN
 import Bootstrap.Grid as Grid
 import Bootstrap.Table as Table
 import Bootstrap.Button as Button
 import List.Extra exposing (updateIf)
+import Navigation
 
 
 ---- MODEL ----
@@ -24,7 +25,12 @@ type alias Product =
 
 
 type alias Model =
-    { availableProducts : List Product }
+    { availableProducts : List Product, page : Page }
+
+
+type Page
+    = Home
+    | Checkout
 
 
 cartTotal : Model -> Int
@@ -52,11 +58,12 @@ initialModel =
         , { id = 3, description = "Nike Men's Tech Essential Web Belt", quantityInStock = 5, price = 720, quantityInCart = 0 }
         , { id = 4, description = "Under Armour 6\" Performance Wristband", quantityInStock = 3, price = 899, quantityInCart = 0 }
         ]
+    , page = Home
     }
 
 
-init : ( Model, Cmd Msg )
-init =
+init : Navigation.Location -> ( Model, Cmd Msg )
+init location =
     ( initialModel
     , Cmd.none
     )
@@ -69,6 +76,9 @@ init =
 type Msg
     = AddToCart Product
     | RemoveFromCart Product
+    | ProceedCheckout
+    | ContinueShopping
+    | UrlChange Navigation.Location
 
 
 addToCart : Product -> Product
@@ -81,9 +91,31 @@ removeFromCart product =
     { product | quantityInStock = product.quantityInStock + product.quantityInCart, quantityInCart = 0 }
 
 
+getPage : String -> Page
+getPage hash =
+    case hash of
+        "#home" ->
+            Home
+
+        "#checkout" ->
+            Checkout
+
+        _ ->
+            Home
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        UrlChange location ->
+            ( { model | page = (getPage location.hash) }, Cmd.none )
+
+        ProceedCheckout ->
+            ( model, Navigation.newUrl "#checkout" )
+
+        ContinueShopping ->
+            ( model, Navigation.newUrl "#home" )
+
         RemoveFromCart product ->
             let
                 newAvailableProducts =
@@ -165,6 +197,15 @@ viewCart model =
             else
                 cartList model
                     |> List.map viewCartProduct
+
+        checkout =
+            if isCartEmpty model then
+                div [] []
+            else
+                Button.button [ Button.primary, Button.block, Button.large, Button.onClick <| ProceedCheckout ]
+                    [ text "Checkout"
+                    , i [ class "fa fa-angle-right" ] []
+                    ]
     in
         Grid.col []
             [ h2 [] [ text "My Shopping Cart" ]
@@ -187,6 +228,7 @@ viewCart model =
                 , sup [] [ text "$" ]
                 , span [] [ text <| formatPrice <| cartTotal model ]
                 ]
+            , checkout
             ]
 
 
@@ -210,15 +252,45 @@ viewCartProduct product =
         ]
 
 
-view : Model -> Html Msg
-view model =
-    Grid.container []
-        [ CDN.stylesheet
-        , Grid.row []
-            [ viewAvailableProducts model
-            , viewCart model
+viewCheckout : Model -> Grid.Column Msg
+viewCheckout model =
+    Grid.col []
+        [ h2 [] [ text "Checkout" ]
+        , span [ class "pull-right alert alert-success" ]
+            [ span [] [ text "Total Price: " ]
+            , sup [] [ text "$" ]
+            , span [] [ text <| formatPrice <| cartTotal model ]
+            ]
+        , Button.button [ Button.small, Button.info, Button.large, Button.onClick <| ContinueShopping ]
+            [ text "Continue Shopping"
+            , i [ class "fa fa-shopping-cart" ] []
+            ]
+        , Button.button [ Button.small, Button.primary, Button.large ]
+            [ text "Done"
+            , i [ class "fa fa-angle-right" ] []
             ]
         ]
+
+
+view : Model -> Html Msg
+view model =
+    let
+        body =
+            case model.page of
+                Home ->
+                    Grid.row []
+                        [ viewAvailableProducts model
+                        , viewCart model
+                        ]
+
+                Checkout ->
+                    Grid.row []
+                        [ viewCheckout model ]
+    in
+        Grid.container []
+            [ CDN.stylesheet
+            , body
+            ]
 
 
 
@@ -227,7 +299,7 @@ view model =
 
 main : Program Never Model Msg
 main =
-    Html.program
+    Navigation.program UrlChange
         { view = view
         , init = init
         , update = update
